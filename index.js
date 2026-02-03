@@ -1,4 +1,5 @@
 const express = require("express");
+require("dotenv").config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -8,7 +9,10 @@ app.use(express.json());
 
 // test route
 app.get("/", (req, res) => {
-  res.send("Backend is running 🚀");
+  res.json({ 
+    message: "Backend is running 🚀",
+    apiKey: process.env.API_KEY
+  });
 });
 
 // sample API
