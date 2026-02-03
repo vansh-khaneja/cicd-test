@@ -1,0 +1,81 @@
+name: CI/CD Pipeline
+
+on:
+    push:
+        branches: [ main ]
+    pull_request:
+        branches: [ main ]
+
+
+jobs:
+    build-and-test:
+
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '20'
+                  cache: 'npm'
+
+            - name: Install dependencies
+              run: npm ci
+
+        
+            - name: Run build
+              run: npm run build
+
+            - name: Run lint
+              run: npm run lint
+
+
+    build-and-push-docker-image:
+        needs: build-and-test
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Log in to Docker Hub
+              uses: docker/login-action@v3
+              with:
+                  username: ${{ secrets.DOCKER_USERNAME }}
+                  password: ${{ secrets.DOCKER_PASSWORD }}
+
+            - name: Build and push Docker image
+              id: build
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  file: ./Dockerfile
+                  push: true
+                  platforms: linux/amd64
+                  tags: ${{ secrets.DOCKER_USERNAME }}/cd-app:latest
+
+            - name: Image digest
+              run: echo ${{ steps.build.outputs.digest }}
+
+            - name: Deploy to server
+              uses: appleboy/ssh-action@v1.0.3
+              with:
+                host: ${{ secrets.SERVER_HOST }}
+                username: root
+                key: ${{ secrets.SSH_PRIVATE_KEY }}
+                script: |
+                  docker pull ${{ secrets.DOCKER_USERNAME }}/cd-app:latest
+                  docker stop cd-app || true
+                  docker rm cd-app || true
+                  docker run -d \
+                    --name cd-app \
+                    -p 3000:3000 \
+                    --env-file /opt/cd-app/.env \
+                    --restart unless-stopped \
+                    ${{ secrets.DOCKER_USERNAME }}/cd-app:latest
